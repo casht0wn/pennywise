@@ -1,90 +1,139 @@
-# Pennywise app
+# Pennywise
 
-The purpose of this app is to identify and track recurring payments such as bills, and provide a notification system to make sure the user is reminded about upcoming payments. Since transaction labels can be difficult to properly group, there are also manual mechanisms to both add a new bill as well as mark an existing transaction as a bill payment.
+Pennywise is a Flet-based personal finance app focused on one thing: helping you reliably track recurring bills.
 
-## Features Yet to Implement
-- make a new bill from an existing payment:\
-This should scan for all similar payments and suggest they be grouped into the new bill.
-- implement a "friendly name" label for bills so they can be identified without using payee codes.
-- calendar view to visualize when bills happen over the month.
-- possibly integrate notifications through home assistant.
+It combines automatic recurring-payment detection with manual controls, so you can keep your bill list accurate even when transaction labels are inconsistent.
 
-## Run the app
+## What it does
 
-### uv
+- Detects recurring payments from transaction history
+- Tracks known bills and expected due dates
+- Helps notify you about upcoming payments
+- Supports manual bill creation and bill-payment tagging
+- Includes CSV import support for bringing in transaction data
+
+## Tech stack
+
+- Python
+- Flet (desktop + web UI)
+- Local app storage under `storage/`
+
+## Project layout
+
+```
+src/
+	main.py                 # app entry point
+	pages/                  # UI pages (dashboard, bills, transactions, etc.)
+	services/               # business logic (db, labeling, notifications, detection)
+storage/
+	data/                   # persisted app data
+	temp/                   # temporary files
+```
+
+## Quick start
+
+### Prerequisites
+
+- Python 3.10+
+- One of:
+	- `uv` (recommended)
+	- `poetry`
+
+### Option 1: Run with uv
 
 Run as a desktop app:
 
-```
+```bash
 uv run flet run
 ```
 
 Run as a web app:
 
-```
+```bash
 uv run flet run --web
 ```
 
-### Poetry
+### Option 2: Run with Poetry
 
-Install dependencies from `pyproject.toml`:
+Install dependencies:
 
-```
+```bash
 poetry install
 ```
 
 Run as a desktop app:
 
-```
+```bash
 poetry run flet run
 ```
 
 Run as a web app:
 
-```
+```bash
 poetry run flet run --web
 ```
 
-For more details on running the app, refer to the [Getting Started Guide](https://flet.dev/docs/getting-started/).
+For additional runtime details, see the Flet [Getting Started Guide](https://flet.dev/docs/getting-started/).
 
-## Build the app
+## Typical workflow
+
+1. Import transactions (for example via CSV import).
+2. Review automatically detected recurring payments.
+3. Confirm or adjust bill groupings.
+4. Add manual bills when needed.
+5. Monitor upcoming payments from the dashboard.
+
+## Build packages
 
 ### Android
 
-```
+```bash
 flet build apk -v
 ```
 
-For more details on building and signing `.apk` or `.aab`, refer to the [Android Packaging Guide](https://flet.dev/docs/publish/android/).
+Android packaging/signing docs: [Android Packaging Guide](https://flet.dev/docs/publish/android/).
 
 ### iOS
 
-```
+```bash
 flet build ipa -v
 ```
 
-For more details on building and signing `.ipa`, refer to the [iOS Packaging Guide](https://flet.dev/docs/publish/ios/).
+iOS packaging/signing docs: [iOS Packaging Guide](https://flet.dev/docs/publish/ios/).
 
 ### macOS
 
-```
+```bash
 flet build macos -v
 ```
 
-For more details on building macOS package, refer to the [macOS Packaging Guide](https://flet.dev/docs/publish/macos/).
+macOS packaging docs: [macOS Packaging Guide](https://flet.dev/docs/publish/macos/).
 
 ### Linux
 
-```
+```bash
 flet build linux -v
 ```
 
-For more details on building Linux package, refer to the [Linux Packaging Guide](https://flet.dev/docs/publish/linux/).
+Linux packaging docs: [Linux Packaging Guide](https://flet.dev/docs/publish/linux/).
 
 ### Windows
 
-```
+```bash
 flet build windows -v
 ```
 
-For more details on building Windows package, refer to the [Windows Packaging Guide](https://flet.dev/docs/publish/windows/).
+Windows packaging docs: [Windows Packaging Guide](https://flet.dev/docs/publish/windows/).
+
+## Troubleshooting
+
+- If dependencies fail to resolve, re-run install in a clean virtual environment.
+- If the app opens but data looks stale, clear temporary files in `storage/temp/` and relaunch.
+- If build commands fail, verify platform-specific requirements in the relevant Flet packaging guide.
+
+## Roadmap ideas
+
+- Better recurring-payment confidence scoring
+- Smarter vendor-name normalization
+- More configurable reminder timing
+- Export and backup helpers

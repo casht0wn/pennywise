@@ -506,7 +506,7 @@ def transactions_tab(page: ft.Page):
     refresh_transactions()
     
     return ft.Column([
-        ft.Text("Transaction Management", size=20, weight=ft.FontWeight.BOLD),
+        ft.Text("Transactions", size=20, weight=ft.FontWeight.BOLD),
         ft.Divider(),
         ft.Text("Import CSV", size=16, weight=ft.FontWeight.BOLD),
         import_section,

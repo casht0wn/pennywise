@@ -1,80 +1,71 @@
 import flet as ft
 from services.db import session, Category
 
-def get_categories():
-    return session.query(Category).all()
-
-def add_category(name: str):
-    try:
-        new_category = Category(name=name)
-        session.add(new_category)
-        session.commit()
-        return True
-    except Exception as e:
-        session.rollback()
-        print(f"Error adding category: {e}")
-        return False
 
 def categories_tab(page: ft.Page):
     def refresh_categories():
         try:
-            categories = get_categories()
+            categories = session.query(Category).all()
             data_table.rows.clear()
-            
-            for c in categories:
+            for i, c in enumerate(categories, 1):
                 data_table.rows.append(
                     ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(str(c.id))),
-                        ft.DataCell(ft.Text(c.name))
+                        ft.DataCell(ft.Text(str(i), color="grey")),
+                        ft.DataCell(ft.Text(c.name)),
                     ])
                 )
             page.update()
-            
         except Exception as e:
-            page.show_snack_bar(
-                ft.SnackBar(content=ft.Text(f"Error loading categories: {e}"))
-            )
+            page.open(ft.SnackBar(content=ft.Text(f"Error loading categories: {e}")))
 
-    refresh_button = ft.ElevatedButton(
-        "Refresh",
-        icon=ft.Icons.REFRESH,
-        on_click=lambda _: refresh_categories()
-    )
+    def show_add_dialog():
+        name_field = ft.TextField(label="Category Name", autofocus=True, width=300)
 
-    add_category_button = ft.ElevatedButton(
-        "Add Category",
-        icon=ft.Icons.ADD,
-        on_click=lambda _: add_category_dialog.open()
-    )
+        def save(e):
+            name = (name_field.value or "").strip()
+            if not name:
+                page.open(ft.SnackBar(content=ft.Text("Category name is required")))
+                return
+            try:
+                session.add(Category(name=name))
+                session.commit()
+                page.close(dialog)
+                refresh_categories()
+                page.open(ft.SnackBar(content=ft.Text(f"Added category '{name}'")))
+            except Exception as ex:
+                session.rollback()
+                page.open(ft.SnackBar(content=ft.Text(f"Error: {ex}")))
 
-    add_category_dialog = ft.AlertDialog(
-        title=ft.Text("Add Category"),
-        content=ft.Column([
-            ft.TextField(label="Category Name", autofocus=True),
-            ft.TextField(label="Description", multiline=True)
-        ]),
-        actions=[
-            ft.TextButton("Cancel", on_click=lambda _: add_category_dialog.close()),
-            ft.TextButton("Add", on_click=lambda _: add_category(add_category_dialog.content[0].value))
-        ]
-    )
-
+        dialog = ft.AlertDialog(
+            title=ft.Text("Add Category"),
+            content=ft.Container(content=name_field, padding=ft.padding.only(top=8)),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: page.close(dialog)),
+                ft.ElevatedButton("Add", on_click=save),
+            ],
+        )
+        page.open(dialog)
 
     data_table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("ID")),
-            ft.DataColumn(ft.Text("Name"))
+            ft.DataColumn(ft.Text("#")),
+            ft.DataColumn(ft.Text("Name")),
         ],
-        rows=[]
-    )
-
-    container = ft.Container(
-        content=ft.Column([
-            ft.Row([refresh_button, add_category_button]),
-            data_table
-        ]),
-        padding=10
+        rows=[],
+        column_spacing=40,
     )
 
     refresh_categories()
-    return container
+
+    return ft.Column(
+        [
+            ft.Text("Categories", size=20, weight=ft.FontWeight.BOLD),
+            ft.Divider(),
+            ft.Row([
+                ft.ElevatedButton("Refresh", icon=ft.Icons.REFRESH, on_click=lambda _: refresh_categories()),
+                ft.ElevatedButton("Add Category", icon=ft.Icons.ADD, on_click=lambda _: show_add_dialog()),
+            ]),
+            ft.ListView(controls=[data_table], height=400, auto_scroll=True),
+        ],
+        scroll=ft.ScrollMode.AUTO,
+    )

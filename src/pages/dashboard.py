@@ -18,14 +18,14 @@ def dashboard_tab(page: ft.Page):
         try:
             summary = notification_service.get_dashboard_summary()
             
-            # Update summary cards
-            upcoming_card.content.content.controls[0].value = str(summary['upcoming_count'])
-            upcoming_card.content.content.controls[1].value = f"${summary['upcoming_total']:.2f}"
-            
-            overdue_card.content.content.controls[0].value = str(summary['overdue_count'])
-            overdue_card.content.content.controls[1].value = f"${summary['overdue_total']:.2f}"
-            
-            today_card.content.content.controls[0].value = str(summary['today_count'])
+            # Update summary cards (count at index 1, amount at index 2)
+            upcoming_card.content.content.controls[1].value = str(summary['upcoming_count'])
+            upcoming_card.content.content.controls[2].value = f"${summary['upcoming_total']:.2f}"
+
+            overdue_card.content.content.controls[1].value = str(summary['overdue_count'])
+            overdue_card.content.content.controls[2].value = f"${summary['overdue_total']:.2f}"
+
+            today_card.content.content.controls[1].value = str(summary['today_count'])
             
             # Update today's bills list
             today_bills_list.controls.clear()
@@ -126,48 +126,64 @@ def dashboard_tab(page: ft.Page):
             page.open(ft.SnackBar(content=ft.Text(f"Error checking notifications: {e}")))
     
     # Create summary cards
+    # Note: count is at controls[1], amount at controls[2] — refresh_dashboard() depends on these indices.
     upcoming_card = ft.Card(
+        elevation=2,
         content=ft.Container(
-            content=ft.Column([
-                ft.Text("0", size=30, weight=ft.FontWeight.BOLD, color="blue"),
-                ft.Text("$0.00", size=16),
-                ft.Text("Upcoming Bills", size=14, weight=ft.FontWeight.BOLD),
-                ft.Text("Next 30 days", size=12, color="grey")
-            ], alignment=ft.MainAxisAlignment.CENTER,
-               horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=20,
-            width=150,
-            height=120
-        )
+            content=ft.Column(
+                [
+                    ft.Icon(ft.Icons.UPCOMING, color="blue", size=28),
+                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="blue"),
+                    ft.Text("$0.00", size=14, color="blue700"),
+                    ft.Text("Upcoming Bills", size=13, weight=ft.FontWeight.W_500),
+                    ft.Text("Next 30 days", size=11, color="grey"),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=3,
+            ),
+            padding=ft.padding.symmetric(vertical=20, horizontal=24),
+            width=190,
+        ),
     )
-    
+
     overdue_card = ft.Card(
+        elevation=2,
         content=ft.Container(
-            content=ft.Column([
-                ft.Text("0", size=30, weight=ft.FontWeight.BOLD, color="red"),
-                ft.Text("$0.00", size=16),
-                ft.Text("Overdue Bills", size=14, weight=ft.FontWeight.BOLD),
-                ft.Text("Past due", size=12, color="grey")
-            ], alignment=ft.MainAxisAlignment.CENTER,
-               horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=20,
-            width=150,
-            height=120
-        )
+            content=ft.Column(
+                [
+                    ft.Icon(ft.Icons.WARNING_ROUNDED, color="red", size=28),
+                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="red"),
+                    ft.Text("$0.00", size=14, color="red700"),
+                    ft.Text("Overdue Bills", size=13, weight=ft.FontWeight.W_500),
+                    ft.Text("Past due", size=11, color="grey"),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=3,
+            ),
+            padding=ft.padding.symmetric(vertical=20, horizontal=24),
+            width=190,
+        ),
     )
-    
+
     today_card = ft.Card(
+        elevation=2,
         content=ft.Container(
-            content=ft.Column([
-                ft.Text("0", size=30, weight=ft.FontWeight.BOLD, color="orange"),
-                ft.Text("Due Today", size=14, weight=ft.FontWeight.BOLD),
-                ft.Text("Action needed", size=12, color="grey")
-            ], alignment=ft.MainAxisAlignment.CENTER,
-               horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=20,
-            width=150,
-            height=120
-        )
+            content=ft.Column(
+                [
+                    ft.Icon(ft.Icons.TODAY, color="orange", size=28),
+                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="orange"),
+                    ft.Text("Due Today", size=13, weight=ft.FontWeight.W_500),
+                    ft.Text("Action needed", size=11, color="grey"),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=3,
+            ),
+            padding=ft.padding.symmetric(vertical=20, horizontal=24),
+            width=190,
+        ),
     )
     
     # Action buttons
@@ -202,23 +218,20 @@ def dashboard_tab(page: ft.Page):
     refresh_dashboard()
     
     return ft.Column([
-        ft.Text("Bill Dashboard", size=20, weight=ft.FontWeight.BOLD),
+        ft.Text("Dashboard", size=20, weight=ft.FontWeight.BOLD),
         ft.Divider(),
-        
+
         # Summary cards row
         ft.Row([
             upcoming_card,
-            overdue_card, 
-            today_card
-        ], alignment=ft.MainAxisAlignment.START),
-        
+            overdue_card,
+            today_card,
+        ], alignment=ft.MainAxisAlignment.START, spacing=12),
+
+        ft.Row([refresh_button, notifications_button], spacing=8),
+
         ft.Divider(),
-        
-        # Action buttons
-        ft.Row([refresh_button, notifications_button]),
-        
-        ft.Divider(),
-        
+
         # Two column layout
         ft.Row([
             # Left column - Today's bills  

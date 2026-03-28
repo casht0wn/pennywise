@@ -47,7 +47,7 @@ def main(page: ft.Page):
             spacing=8,
         ),
         padding=ft.padding.all(32),
-        max_width=580,
+        width=580,
     )
 
     tabs = ft.Tabs(

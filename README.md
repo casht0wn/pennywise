@@ -1,5 +1,7 @@
 # Pennywise app
 
+The purpose of this app is to identify and track recurring payments such as bills, and provide a notification system to make sure the user is reminded about upcoming payments. Since transaction labels can be difficult to properly group, there are also manual mechanisms to both add a new bill as well as mark an existing transaction as a bill payment.
+
 ## Run the app
 
 ### uv

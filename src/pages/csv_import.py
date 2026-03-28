@@ -2,7 +2,7 @@ import flet as ft
 import csv
 from datetime import datetime
 from services.db import session, Transaction, Category
-from services.label import suggest_payee
+from services.label import suggest_payee, refresh_label_index
 
 def add_transaction(transaction: Transaction):
     try:
@@ -22,6 +22,11 @@ def csv_import_page(page: ft.Page):
             status_text.value = "No files selected"
             page.update()
             return
+
+        try:
+            refresh_label_index()
+        except Exception as refresh_error:
+            print(f"Warning: could not refresh label index before import: {refresh_error}")
             
         imported_count = 0
         duplicate_count = 0
@@ -55,7 +60,14 @@ def csv_import_page(page: ft.Page):
                             amount = credit - debit
                             
                             normalized_label = label.lower().strip()
-                            payee = suggest_payee(label)
+                            payee = None
+                            if label and label.strip():
+                                try:
+                                    payee = suggest_payee(label)
+                                except Exception as suggestion_error:
+                                    print(
+                                        f"Row {row_num}: payee suggestion failed for label '{label}': {suggestion_error}"
+                                    )
                             
                             # Check for duplicates
                             existing_transaction = session.query(Transaction).filter_by(
@@ -100,6 +112,12 @@ def csv_import_page(page: ft.Page):
                 return
         
         # Update status
+        if imported_count > 0:
+            try:
+                refresh_label_index()
+            except Exception as refresh_error:
+                print(f"Warning: could not refresh label index after import: {refresh_error}")
+
         status_text.value = f"Import complete! Imported: {imported_count}, Duplicates: {duplicate_count}, Errors: {error_count}"
        
         # Show snackbar

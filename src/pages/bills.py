@@ -505,7 +505,7 @@ def bills_tab(page: ft.Page):
     refresh_bills()
     
     return ft.Column([
-        ft.Text("Bill Management", size=20, weight=ft.FontWeight.BOLD),
+        ft.Text("Bills", size=20, weight=ft.FontWeight.BOLD),
         ft.Divider(),
         
         # Bill suggestions section

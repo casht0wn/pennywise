@@ -356,7 +356,7 @@ def transactions_tab(page: ft.Page):
                             ],
                             spacing=4,
                         ),
-                        bgcolor="blue50" if is_template else None,
+                        border=ft.border.only(left=ft.BorderSide(3, "blue")) if is_template else None,
                         padding=ft.padding.symmetric(vertical=2, horizontal=4),
                     )
                 )
@@ -440,7 +440,7 @@ def transactions_tab(page: ft.Page):
                             ft.Container(
                                 content=ft.Column(
                                     [
-                                        ft.Text("Template Payment", size=12, weight=ft.FontWeight.BOLD),
+                                        ft.Text("Template Payment", size=12, weight=ft.FontWeight.BOLD, color="blue"),
                                         ft.Text(f"Label: {transaction.label[:65]}", size=11),
                                         ft.Text(
                                             f"Amount: ${template_amount:.2f}   "
@@ -450,9 +450,8 @@ def transactions_tab(page: ft.Page):
                                     ],
                                     spacing=2,
                                 ),
-                                bgcolor="blue50",
-                                padding=8,
-                                border_radius=4,
+                                border=ft.border.only(left=ft.BorderSide(3, "blue")),
+                                padding=ft.padding.only(left=10, top=6, bottom=6),
                             ),
                             ft.Divider(height=6),
                             ft.Text("Bill Details", size=12, weight=ft.FontWeight.BOLD),

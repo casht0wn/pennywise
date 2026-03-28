@@ -203,7 +203,7 @@ def detect_potential_bills() -> List[BillSuggestion]:
     return suggestions
 
 def create_bill_from_suggestion(suggestion: BillSuggestion) -> Bill:
-    """Create a new Bill record from approved suggestion"""
+    """Create a new Bill record from approved suggestion, linking supporting transactions as paid history"""
     new_bill = Bill(
         payee=suggestion.payee,
         expected_amount=suggestion.expected_amount,
@@ -212,13 +212,26 @@ def create_bill_from_suggestion(suggestion: BillSuggestion) -> Bill:
         category_id=suggestion.category_id,
         is_active=True
     )
-    
+
     session.add(new_bill)
     session.commit()
-    
-    # Create bill instances for the next 6 months
+
+    # Link each supporting transaction as a historical paid instance
+    for t in sorted(suggestion.supporting_transactions, key=lambda x: x.date):
+        instance = BillInstance(
+            bill_id=new_bill.id,
+            due_date=t.date,
+            actual_amount=abs(t.amount),
+            status='paid',
+            transaction_id=t.id
+        )
+        session.add(instance)
+
+    session.commit()
+
+    # Generate pending instances for the next 6 months
     generate_future_bill_instances(new_bill.id)
-    
+
     return new_bill
 
 def generate_future_bill_instances(bill_id: int, months: int = 6):

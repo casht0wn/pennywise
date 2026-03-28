@@ -2,6 +2,13 @@
 
 The purpose of this app is to identify and track recurring payments such as bills, and provide a notification system to make sure the user is reminded about upcoming payments. Since transaction labels can be difficult to properly group, there are also manual mechanisms to both add a new bill as well as mark an existing transaction as a bill payment.
 
+## Features Yet to Implement
+- make a new bill from an existing payment:\
+This should scan for all similar payments and suggest they be grouped into the new bill.
+- implement a "friendly name" label for bills so they can be identified without using payee codes.
+- calendar view to visualize when bills happen over the month.
+- possibly integrate notifications through home assistant.
+
 ## Run the app
 
 ### uv

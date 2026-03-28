@@ -3,6 +3,11 @@ from datetime import datetime, date, timedelta
 from services.db import session, Transaction, Category, Bill, BillInstance
 from services.label import suggest_payee
 from services.notifications import notification_service
+from services.bill_detection import (
+    find_similar_transactions_for_bill,
+    create_bill_with_transactions,
+    normalize_payee_from_label,
+)
 from pages.csv_import import csv_import_page
 
 def get_transactions(limit=100):
@@ -71,7 +76,18 @@ def transactions_tab(page: ft.Page):
         try:
             transactions = get_transactions()
             data_table.rows.clear()
-            
+
+            # Single query: which transaction IDs are already linked to a bill instance?
+            linked_info: dict = {}  # transaction_id -> bill payee name
+            for inst, bill in (
+                session.query(BillInstance, Bill)
+                .join(Bill)
+                .filter(BillInstance.transaction_id.isnot(None))
+                .all()
+            ):
+                if inst.transaction_id:
+                    linked_info[inst.transaction_id] = bill.payee
+
             for t in transactions:
                 # Handle null category
                 category_name = ""
@@ -88,36 +104,66 @@ def transactions_tab(page: ft.Page):
                 else:
                     payee_name = ""
                 
-                # Check for bill matching
-                matching_bill = find_matching_bill_instance(t)
+                # Determine bill action state for this transaction
                 bill_suggestion = ""
-                action_button = ft.Text("")
-                
-                if matching_bill:
-                    bill_suggestion = f"Matches: {matching_bill.bill.payee}"
-                    # Create a proper closure for the lambda
-                    def create_link_handler(transaction_id, bill_instance_id):
-                        return lambda e: link_bill_payment(transaction_id, bill_instance_id)
-                    
-                    action_button = ft.IconButton(
-                        icon=ft.Icons.LINK,
-                        tooltip=f"Link to {matching_bill.bill.payee} bill",
-                        icon_color="blue", 
-                        on_click=create_link_handler(t.id, matching_bill.id)
-                    )
-                elif t.amount < 0:  # Only show for debits
-                    # Create a proper closure for the lambda
-                    def create_dialog_handler(transaction_id):
-                        return lambda e: show_bill_selection_dialog(transaction_id)
-                        
-                    action_button = ft.IconButton(
-                        icon=ft.Icons.RECEIPT_LONG,
-                        tooltip="Mark as bill payment",
-                        icon_color="grey",
-                        on_click=create_dialog_handler(t.id)
-                    )
-                else:
-                    action_button = ft.Container()  # Empty container for credits
+                bill_suggestion_color = "blue"
+                action_button = ft.Container()
+
+                if t.id in linked_info:
+                    # Already linked — show status text, no further action needed
+                    bill_suggestion = f"✓ {linked_info[t.id]}"
+                    bill_suggestion_color = "green"
+
+                elif t.amount < 0:  # Only debits can be bill payments
+                    matching_bill = find_matching_bill_instance(t)
+
+                    def create_new_bill_handler(tid):
+                        return lambda e: show_create_bill_from_transaction_dialog(tid)
+
+                    if matching_bill:
+                        bill_suggestion = f"Matches: {matching_bill.bill.payee}"
+
+                        def create_link_handler(transaction_id, bill_instance_id):
+                            return lambda e: link_bill_payment(transaction_id, bill_instance_id)
+
+                        action_button = ft.Row(
+                            [
+                                ft.IconButton(
+                                    icon=ft.Icons.LINK,
+                                    tooltip=f"Link to '{matching_bill.bill.payee}' bill",
+                                    icon_color="blue",
+                                    on_click=create_link_handler(t.id, matching_bill.id),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.REPEAT,
+                                    tooltip="Create new recurring bill",
+                                    icon_color="purple",
+                                    on_click=create_new_bill_handler(t.id),
+                                ),
+                            ],
+                            spacing=0,
+                        )
+                    else:
+                        def create_dialog_handler(transaction_id):
+                            return lambda e: show_bill_selection_dialog(transaction_id)
+
+                        action_button = ft.Row(
+                            [
+                                ft.IconButton(
+                                    icon=ft.Icons.RECEIPT_LONG,
+                                    tooltip="Mark as bill payment",
+                                    icon_color="grey",
+                                    on_click=create_dialog_handler(t.id),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.REPEAT,
+                                    tooltip="Create new recurring bill",
+                                    icon_color="purple",
+                                    on_click=create_new_bill_handler(t.id),
+                                ),
+                            ],
+                            spacing=0,
+                        )
                 
                 data_table.rows.append(
                     ft.DataRow(cells=[
@@ -131,7 +177,7 @@ def transactions_tab(page: ft.Page):
                                           color="red" if t.amount < 0 else "green")),
                         ft.DataCell(ft.Text(f"{t.balance:.2f}")),
                         ft.DataCell(ft.Column([
-                            ft.Text(bill_suggestion, size=10, color="blue") if bill_suggestion else ft.Container(),
+                            ft.Text(bill_suggestion, size=10, color=bill_suggestion_color) if bill_suggestion else ft.Container(),
                             action_button
                         ], spacing=2))
                     ])
@@ -245,6 +291,191 @@ def transactions_tab(page: ft.Page):
             
         except Exception as e:
             print(f"Exception in show_bill_selection_dialog: {e}")  # Debug line
+            page.open(ft.SnackBar(content=ft.Text(f"Error opening dialog: {str(e)}")))
+
+    def show_create_bill_from_transaction_dialog(transaction_id):
+        """Open a dialog to create a new recurring bill from a payment transaction.
+
+        The selected transaction acts as a template: similar historical payments are
+        scanned and presented as a checkbox list for the user to confirm before the
+        bill is created and all selected transactions are linked as past payments.
+        """
+        try:
+            transaction = session.query(Transaction).get(transaction_id)
+            if not transaction:
+                page.open(ft.SnackBar(content=ft.Text("Transaction not found")))
+                return
+
+            template_amount = abs(transaction.amount)
+            template_payee = transaction.payee or normalize_payee_from_label(transaction.label)
+
+            # Find similar past transactions (sorted oldest-first, template excluded)
+            similar = find_similar_transactions_for_bill(transaction_id)
+
+            # Infer suggested due day from template + similar transaction dates
+            all_dates = [transaction.date] + [t.date for t, _ in similar]
+            suggested_due_day = int(round(sum(d.day for d in all_dates) / len(all_dates)))
+
+            # --- Bill detail fields ---
+            payee_field = ft.TextField(label="Payee / Bill Name", value=template_payee, width=320)
+            amount_field = ft.TextField(
+                label="Expected Amount", value=f"{template_amount:.2f}", width=150
+            )
+            due_day_field = ft.TextField(
+                label="Due Day (1-31)", value=str(suggested_due_day), width=130
+            )
+            categories = get_categories()
+            category_dropdown = ft.Dropdown(
+                label="Category",
+                options=[ft.dropdown.Option(key=str(cat.id), text=cat.name) for cat in categories],
+                value=str(transaction.category_id) if transaction.category_id else None,
+                width=200,
+            )
+
+            # --- Build checkbox rows ---
+            # Template transaction is first (pre-checked), then similar sorted by date
+            all_items = [(transaction, 1.0)] + similar
+            checkbox_refs = []  # list of (Transaction, ft.Checkbox)
+
+            checkbox_rows = []
+            for t, score in all_items:
+                is_template = t.id == transaction_id
+                cb = ft.Checkbox(value=True)
+                checkbox_refs.append((t, cb))
+                label_text = "(this payment)" if is_template else f"{score:.0%} match"
+                label_color = "blue" if is_template else "grey600"
+                checkbox_rows.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                cb,
+                                ft.Text(t.date.strftime("%Y-%m-%d"), width=95, size=12),
+                                ft.Text(t.label[:42], width=290, size=12),
+                                ft.Text(f"${abs(t.amount):.2f}", width=75, size=12),
+                                ft.Text(label_text, size=11, color=label_color),
+                            ],
+                            spacing=4,
+                        ),
+                        bgcolor="blue50" if is_template else None,
+                        padding=ft.padding.symmetric(vertical=2, horizontal=4),
+                    )
+                )
+
+            similar_section = ft.Column(
+                [
+                    ft.Text(
+                        f"Payments to include ({len(checkbox_rows)} found — uncheck to exclude):",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                    ft.Container(
+                        content=ft.Column(
+                            checkbox_rows,
+                            scroll=ft.ScrollMode.AUTO,
+                            spacing=0,
+                        ),
+                        height=220,
+                        border=ft.border.all(1, "grey300"),
+                        border_radius=4,
+                        padding=4,
+                    ),
+                ],
+                spacing=6,
+            )
+
+            def create_bill_action(e):
+                try:
+                    if not payee_field.value or not payee_field.value.strip():
+                        page.open(ft.SnackBar(content=ft.Text("Payee name is required")))
+                        return
+                    try:
+                        amount = float(amount_field.value)
+                        if amount <= 0:
+                            raise ValueError
+                    except ValueError:
+                        page.open(ft.SnackBar(content=ft.Text("Enter a valid amount greater than 0")))
+                        return
+                    try:
+                        due_day = int(due_day_field.value)
+                        if not (1 <= due_day <= 31):
+                            raise ValueError
+                    except ValueError:
+                        page.open(ft.SnackBar(content=ft.Text("Due day must be a number between 1 and 31")))
+                        return
+
+                    cat_id = int(category_dropdown.value) if category_dropdown.value else None
+                    selected = [t for t, cb in checkbox_refs if cb.value]
+
+                    if not selected:
+                        page.open(ft.SnackBar(content=ft.Text("Select at least one payment to link")))
+                        return
+
+                    bill = create_bill_with_transactions(
+                        payee=payee_field.value.strip(),
+                        expected_amount=amount,
+                        due_day=due_day,
+                        category_id=cat_id,
+                        transactions=selected,
+                    )
+
+                    page.open(
+                        ft.SnackBar(
+                            content=ft.Text(
+                                f"Created bill '{bill.payee}' and linked {len(selected)} payment(s)"
+                            )
+                        )
+                    )
+                    page.close(create_bill_dialog)
+                    refresh_transactions()
+
+                except Exception as ex:
+                    page.open(ft.SnackBar(content=ft.Text(f"Error creating bill: {str(ex)}")))
+
+            create_bill_dialog = ft.AlertDialog(
+                title=ft.Text("Create Recurring Bill from Payment"),
+                content=ft.Container(
+                    content=ft.Column(
+                        [
+                            # Template info banner
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text("Template Payment", size=12, weight=ft.FontWeight.BOLD),
+                                        ft.Text(f"Label: {transaction.label[:65]}", size=11),
+                                        ft.Text(
+                                            f"Amount: ${template_amount:.2f}   "
+                                            f"Date: {transaction.date.strftime('%Y-%m-%d')}",
+                                            size=11,
+                                        ),
+                                    ],
+                                    spacing=2,
+                                ),
+                                bgcolor="blue50",
+                                padding=8,
+                                border_radius=4,
+                            ),
+                            ft.Divider(height=6),
+                            ft.Text("Bill Details", size=12, weight=ft.FontWeight.BOLD),
+                            payee_field,
+                            ft.Row([amount_field, due_day_field, category_dropdown], spacing=8),
+                            ft.Divider(height=6),
+                            similar_section,
+                        ],
+                        spacing=6,
+                        tight=True,
+                    ),
+                    width=720,
+                    height=500,
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: page.close(create_bill_dialog)),
+                    ft.ElevatedButton("Create Bill", on_click=create_bill_action),
+                ],
+            )
+
+            page.open(create_bill_dialog)
+
+        except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error opening dialog: {str(e)}")))
 
     # Create import section

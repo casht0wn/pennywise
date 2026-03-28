@@ -280,5 +280,96 @@ def get_overdue_bills() -> List[BillInstance]:
         BillInstance.status == 'pending',
         Bill.is_active == True
     ).order_by(BillInstance.due_date).all()
-    
+
     return overdue
+
+def find_similar_transactions_for_bill(transaction_id: int) -> List[tuple]:
+    """
+    Find transactions similar to the given one, suitable for grouping into a recurring bill.
+
+    Uses ML label similarity and amount proximity.
+    Returns list of (Transaction, similarity_score) sorted by date (oldest first).
+    The template transaction itself is NOT included in the results.
+    """
+    template = session.query(Transaction).get(transaction_id)
+    if not template or template.amount >= 0:
+        return []
+
+    template_amount = abs(template.amount)
+
+    # Get similarity scores for all labels in the index
+    similar_label_pairs = find_similar_labels(template.label, threshold=0.5)
+    label_score_map = {label: float(score) for label, score in similar_label_pairs}
+
+    if not label_score_map:
+        return []
+
+    # Build set of transaction IDs already linked to a bill instance
+    linked_ids: set = set(
+        row[0] for row in session.query(BillInstance.transaction_id)
+        .filter(BillInstance.transaction_id.isnot(None))
+        .all()
+    )
+
+    # Query all debit transactions except the template
+    candidates = session.query(Transaction).filter(
+        Transaction.amount < 0,
+        Transaction.id != transaction_id
+    ).all()
+
+    results = []
+    for t in candidates:
+        if t.id in linked_ids:
+            continue
+
+        score = label_score_map.get(t.label, 0.0)
+        if score < 0.5:
+            continue
+
+        # Amount must be within ±25% of template
+        if template_amount > 0:
+            ratio = abs(t.amount) / template_amount
+            if not (0.75 <= ratio <= 1.25):
+                continue
+
+        results.append((t, score))
+
+    results.sort(key=lambda x: x[0].date)
+    return results
+
+
+def create_bill_with_transactions(
+    payee: str,
+    expected_amount: float,
+    due_day: int,
+    category_id: Optional[int],
+    transactions: List[Transaction]
+) -> Bill:
+    """
+    Create a new bill and attach the provided transactions as historical paid instances.
+    Future pending instances are generated after linking the historical ones.
+    """
+    new_bill = Bill(
+        payee=payee,
+        expected_amount=expected_amount,
+        due_day=due_day,
+        frequency='monthly',
+        category_id=category_id,
+        is_active=True
+    )
+    session.add(new_bill)
+    session.commit()
+
+    for t in sorted(transactions, key=lambda x: x.date):
+        instance = BillInstance(
+            bill_id=new_bill.id,
+            due_date=t.date,
+            actual_amount=abs(t.amount),
+            status='paid',
+            transaction_id=t.id
+        )
+        session.add(instance)
+
+    session.commit()
+    generate_future_bill_instances(new_bill.id)
+    return new_bill

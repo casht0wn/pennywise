@@ -49,7 +49,8 @@ def dashboard_tab(page: ft.Page):
                     ft.Text("No bills due today", style=ft.TextThemeStyle.BODY_MEDIUM)
                 )
             
-            # Refresh upcoming bills table
+            # Refresh overdue and upcoming tables
+            refresh_overdue_table()
             refresh_upcoming_table()
             
             page.update()
@@ -57,6 +58,47 @@ def dashboard_tab(page: ft.Page):
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error refreshing dashboard: {e}")))
     
+    def refresh_overdue_table():
+        """Refresh the overdue bills table"""
+        try:
+            overdue_bills = session.query(BillInstance).join(Bill).filter(
+                BillInstance.due_date < date.today(),
+                BillInstance.status == 'pending',
+                Bill.is_active == True
+            ).order_by(BillInstance.due_date).all()
+
+            overdue_table.rows.clear()
+
+            if overdue_bills:
+                overdue_status.value = f"{len(overdue_bills)} overdue bill(s)"
+                overdue_status.color = "red"
+            else:
+                overdue_status.value = "No overdue bills"
+                overdue_status.color = "green"
+
+            for bill_instance in overdue_bills:
+                bill = bill_instance.bill
+                days_overdue = (date.today() - bill_instance.due_date).days
+                overdue_table.rows.append(
+                    ft.DataRow(cells=[
+                        ft.DataCell(ft.Text(bill.payee)),
+                        ft.DataCell(ft.Text(f"${bill.expected_amount:.2f}")),
+                        ft.DataCell(ft.Text(bill_instance.due_date.strftime("%Y-%m-%d"), color="red")),
+                        ft.DataCell(ft.Text(f"{days_overdue} day(s)", color="red")),
+                        ft.DataCell(ft.IconButton(
+                            icon=ft.Icons.CHECK_CIRCLE,
+                            icon_color="green",
+                            tooltip="Mark as Paid",
+                            on_click=lambda e, instance_id=bill_instance.id: mark_paid(instance_id)
+                        )),
+                    ])
+                )
+
+            page.update()
+
+        except Exception as e:
+            page.open(ft.SnackBar(content=ft.Text(f"Error loading overdue bills: {e}")))
+
     def refresh_upcoming_table():
         """Refresh the upcoming bills table"""
         try:
@@ -68,24 +110,24 @@ def dashboard_tab(page: ft.Page):
                 BillInstance.status == 'pending',
                 Bill.is_active == True
             ).order_by(BillInstance.due_date).limit(10).all()
-            
+
             upcoming_table.rows.clear()
-            
+
             for bill_instance in upcoming_bills:
                 bill = bill_instance.bill
                 days_until = (bill_instance.due_date - date.today()).days
-                
+
                 # Color code by urgency
                 if days_until == 0:
                     urgency_color = "red"
                     urgency_text = "TODAY"
                 elif days_until <= 3:
-                    urgency_color = "orange" 
+                    urgency_color = "orange"
                     urgency_text = f"{days_until} days"
                 else:
                     urgency_color = "green"
                     urgency_text = f"{days_until} days"
-                
+
                 upcoming_table.rows.append(
                     ft.DataRow(cells=[
                         ft.DataCell(ft.Text(bill.payee)),
@@ -100,9 +142,9 @@ def dashboard_tab(page: ft.Page):
                         ))
                     ])
                 )
-            
+
             page.update()
-            
+
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error loading upcoming bills: {e}")))
     
@@ -199,9 +241,22 @@ def dashboard_tab(page: ft.Page):
         on_click=lambda _: check_notifications()
     )
     
+    # Overdue bills table
+    overdue_status = ft.Text("", size=12)
+    overdue_table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("Payee")),
+            ft.DataColumn(ft.Text("Amount")),
+            ft.DataColumn(ft.Text("Due Date")),
+            ft.DataColumn(ft.Text("Days Overdue")),
+            ft.DataColumn(ft.Text("Action")),
+        ],
+        width=800,
+    )
+
     # Today's bills section
     today_bills_list = ft.Column()
-    
+
     # Upcoming bills table
     upcoming_table = ft.DataTable(
         columns=[
@@ -232,25 +287,31 @@ def dashboard_tab(page: ft.Page):
 
         ft.Divider(),
 
+        # Overdue bills section
+        ft.Row([
+            ft.Text("Overdue Bills", size=16, weight=ft.FontWeight.BOLD, color="red"),
+            overdue_status,
+        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.ListView(controls=[overdue_table], height=220, auto_scroll=True),
+
+        ft.Divider(),
+
         # Two column layout
         ft.Row([
-            # Left column - Today's bills  
+            # Left column - Today's bills
             ft.Column([
                 ft.Text("Bills Due Today", size=16, weight=ft.FontWeight.BOLD),
                 ft.Container(
                     content=today_bills_list,
                     height=200,
-                    width=300
+                    width=300,
                 )
             ]),
-            
+
             # Right column - Upcoming bills
             ft.Column([
                 ft.Text("Upcoming Bills (Next 30 Days)", size=16, weight=ft.FontWeight.BOLD),
-                ft.Container(
-                    content=upcoming_table,
-                    height=300
-                )
+                ft.Container(content=upcoming_table, height=300)
             ])
         ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
         

@@ -9,6 +9,9 @@ from services.bill_detection import (
     normalize_payee_from_label,
 )
 from pages.csv_import import csv_import_page
+from theme import (
+    COLORS, neon_card, neon_divider, section_header, mono_text, cyber_button
+)
 
 def get_transactions(limit=100):
     return session.query(Transaction).order_by(Transaction.date.desc()).limit(limit).all()
@@ -20,14 +23,14 @@ def find_matching_bill_instance(transaction):
     """Find potential bill instance matches for a transaction"""
     if transaction.amount >= 0:  # Only match negative amounts (debits)
         return None
-    
+
     amount = abs(transaction.amount)
     transaction_date = transaction.date
-    
+
     # Look for bill instances due within ±5 days of transaction date
     start_date = transaction_date - timedelta(days=5)
     end_date = transaction_date + timedelta(days=5)
-    
+
     potential_matches = session.query(BillInstance).join(Bill).filter(
         BillInstance.due_date.between(start_date, end_date),
         BillInstance.status == 'pending',
@@ -35,19 +38,19 @@ def find_matching_bill_instance(transaction):
         # Amount within ±15% tolerance
         Bill.expected_amount.between(amount * 0.85, amount * 1.15)
     ).all()
-    
+
     # Further filter by payee similarity if available
     if transaction.payee:
         for bill_instance in potential_matches:
             if transaction.payee.lower() in bill_instance.bill.payee.lower() or \
                bill_instance.bill.payee.lower() in transaction.payee.lower():
                 return bill_instance
-    
+
     # Return best match by date proximity
     if potential_matches:
         potential_matches.sort(key=lambda bi: abs((bi.due_date - transaction_date).days))
         return potential_matches[0]
-    
+
     return None
 
 def link_transaction_to_bill(transaction_id, bill_instance_id):
@@ -55,23 +58,24 @@ def link_transaction_to_bill(transaction_id, bill_instance_id):
     try:
         transaction = session.query(Transaction).get(transaction_id)
         bill_instance = session.query(BillInstance).get(bill_instance_id)
-        
+
         if not transaction or not bill_instance:
             return False
-        
-        # Update bill instance
+
         bill_instance.transaction_id = transaction_id
         bill_instance.actual_amount = abs(transaction.amount)
         bill_instance.status = 'paid'
-        
+
         session.commit()
         return True
-        
+
     except Exception:
         session.rollback()
         return False
 
 def transactions_tab(page: ft.Page):
+    col_label = lambda t: ft.Text(t, size=11, color=COLORS.TEXT_DIM)
+
     def refresh_transactions():
         try:
             transactions = get_transactions()
@@ -89,30 +93,26 @@ def transactions_tab(page: ft.Page):
                     linked_info[inst.transaction_id] = bill.payee
 
             for t in transactions:
-                # Handle null category
                 category_name = ""
                 if t.category_id:
                     category = session.query(Category).get(t.category_id)
                     category_name = category.name if category else "Unknown"
-                
-                                
-                # Handle null payee
+
                 if t.payee:
                     payee_name = t.payee
                 elif t.label:
                     payee_name = suggest_payee(t.label) or ""
                 else:
                     payee_name = ""
-                
+
                 # Determine bill action state for this transaction
                 bill_suggestion = ""
-                bill_suggestion_color = "blue"
+                bill_suggestion_color = COLORS.PRIMARY
                 action_button = ft.Container()
 
                 if t.id in linked_info:
-                    # Already linked — show status text, no further action needed
                     bill_suggestion = f"✓ {linked_info[t.id]}"
-                    bill_suggestion_color = "green"
+                    bill_suggestion_color = COLORS.SUCCESS
 
                 elif t.amount < 0:  # Only debits can be bill payments
                     matching_bill = find_matching_bill_instance(t)
@@ -131,13 +131,13 @@ def transactions_tab(page: ft.Page):
                                 ft.IconButton(
                                     icon=ft.Icons.LINK,
                                     tooltip=f"Link to '{matching_bill.bill.payee}' bill",
-                                    icon_color="blue",
+                                    icon_color=COLORS.PRIMARY,
                                     on_click=create_link_handler(t.id, matching_bill.id),
                                 ),
                                 ft.IconButton(
                                     icon=ft.Icons.REPEAT,
                                     tooltip="Create new recurring bill",
-                                    icon_color="purple",
+                                    icon_color=COLORS.WARNING,
                                     on_click=create_new_bill_handler(t.id),
                                 ),
                             ],
@@ -152,43 +152,44 @@ def transactions_tab(page: ft.Page):
                                 ft.IconButton(
                                     icon=ft.Icons.RECEIPT_LONG,
                                     tooltip="Mark as bill payment",
-                                    icon_color="grey",
+                                    icon_color=COLORS.TEXT_DIM,
                                     on_click=create_dialog_handler(t.id),
                                 ),
                                 ft.IconButton(
                                     icon=ft.Icons.REPEAT,
                                     tooltip="Create new recurring bill",
-                                    icon_color="purple",
+                                    icon_color=COLORS.WARNING,
                                     on_click=create_new_bill_handler(t.id),
                                 ),
                             ],
                             spacing=0,
                         )
-                
+
+                amount_color = COLORS.SECONDARY if t.amount < 0 else COLORS.SUCCESS
+
                 data_table.rows.append(
                     ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(t.date.strftime("%Y-%m-%d"))),
-                        ft.DataCell(ft.Text(t.label[:50])),  # Truncate long labels
-                        ft.DataCell(ft.Text(payee_name)),
-                        ft.DataCell(ft.Text(category_name)),
-                        ft.DataCell(ft.Text(f"{t.debit:.2f}" if t.debit > 0 else "")),
-                        ft.DataCell(ft.Text(f"{t.credit:.2f}" if t.credit > 0 else "")),
-                        ft.DataCell(ft.Text(f"{t.amount:.2f}", 
-                                          color="red" if t.amount < 0 else "green")),
-                        ft.DataCell(ft.Text(f"{t.balance:.2f}")),
+                        ft.DataCell(mono_text(t.date.strftime("%Y-%m-%d"), color=COLORS.TEXT_DIM, size=12)),
+                        ft.DataCell(ft.Text(t.label[:50], color=COLORS.TEXT_PRIMARY, size=12)),
+                        ft.DataCell(ft.Text(payee_name, color=COLORS.TEXT_PRIMARY, size=12)),
+                        ft.DataCell(ft.Text(category_name, color=COLORS.TEXT_DIM, size=12)),
+                        ft.DataCell(mono_text(f"{t.debit:.2f}" if t.debit > 0 else "", color=COLORS.SECONDARY, size=12)),
+                        ft.DataCell(mono_text(f"{t.credit:.2f}" if t.credit > 0 else "", color=COLORS.SUCCESS, size=12)),
+                        ft.DataCell(mono_text(f"{t.amount:.2f}", color=amount_color, size=12)),
+                        ft.DataCell(mono_text(f"{t.balance:.2f}", color=COLORS.TEXT_DIM, size=12)),
                         ft.DataCell(ft.Column([
-                            ft.Text(bill_suggestion, size=10, color=bill_suggestion_color) if bill_suggestion else ft.Container(),
+                            ft.Text(bill_suggestion, size=10, color=bill_suggestion_color, font_family="ShareTechMono") if bill_suggestion else ft.Container(),
                             action_button
                         ], spacing=2))
                     ])
                 )
             page.update()
-            
+
         except Exception as e:
             page.open(
                 ft.SnackBar(content=ft.Text(f"Error loading transactions: {e}"))
             )
-    
+
     def link_bill_payment(transaction_id, bill_instance_id):
         """Link transaction to bill and mark as paid"""
         try:
@@ -203,94 +204,91 @@ def transactions_tab(page: ft.Page):
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error linking transaction: {str(e)}")))
             return False
-    
+
     def show_bill_selection_dialog(transaction_id):
         """Show dialog to manually select which bill this transaction pays"""
         try:
-            print(f"show_bill_selection_dialog called with transaction_id: {transaction_id}")  # Debug line
+            print(f"show_bill_selection_dialog called with transaction_id: {transaction_id}")
             transaction = session.query(Transaction).get(transaction_id)
             if not transaction:
-                print("Transaction not found!")  # Debug line
+                print("Transaction not found!")
                 return
-            
-            # Get pending bill instances from the last 30 days to next 7 days
+
             start_date = transaction.date - timedelta(days=30)
             end_date = transaction.date + timedelta(days=7)
-            
+
             pending_bills = session.query(BillInstance).join(Bill).filter(
                 BillInstance.due_date.between(start_date, end_date),
                 BillInstance.status == 'pending',
                 Bill.is_active == True
             ).order_by(BillInstance.due_date).all()
-            
+
             if not pending_bills:
                 page.open(ft.SnackBar(content=ft.Text("No pending bills found for this time period")))
                 return
-            
-            # Create dropdown options
+
             bill_options = []
             for bill_instance in pending_bills:
                 bill = bill_instance.bill
-                days_diff = (bill_instance.due_date - transaction.date).days
                 label = f"{bill.payee} - ${bill.expected_amount:.2f} (Due: {bill_instance.due_date.strftime('%m/%d/%Y')}) [ID: {bill_instance.id}]"
                 bill_options.append(ft.dropdown.Option(key=str(bill_instance.id), text=label))
-            
+
             if not bill_options:
                 page.open(ft.SnackBar(content=ft.Text("No bill options available")))
                 return
-            
+
             bill_dropdown = ft.Dropdown(
                 label="Select Bill",
                 options=bill_options,
                 width=400
             )
-            
+
             def confirm_bill_link(e):
                 try:
-                    print("confirm_bill_link called!")  # Debug line
+                    print("confirm_bill_link called!")
                     if not bill_dropdown.value:
                         page.open(ft.SnackBar(content=ft.Text("Please select a bill")))
                         return
-                        
+
                     success = link_bill_payment(transaction_id, int(bill_dropdown.value))
                     if success:
                         page.close(bill_dialog)
                     else:
                         page.open(ft.SnackBar(content=ft.Text("Failed to link transaction to bill")))
-                        
+
                 except Exception as ex:
                     page.open(ft.SnackBar(content=ft.Text(f"Error linking bill: {str(ex)}")))
-                    print(f"Exception in confirm_bill_link: {ex}")  # Debug line
-            
+                    print(f"Exception in confirm_bill_link: {ex}")
+
             def close_bill_dialog(e):
                 page.close(bill_dialog)
-            
+
             bill_dialog = ft.AlertDialog(
-                title=ft.Text("Link Transaction to Bill"),
+                title=ft.Text("Link Transaction to Bill", color=COLORS.PRIMARY),
+                bgcolor=COLORS.SURFACE_VARIANT,
                 content=ft.Container(
                     content=ft.Column([
-                        ft.Text(f"Transaction: {transaction.label[:50]}"),
-                        ft.Text(f"Amount: ${abs(transaction.amount):.2f}"),
-                        ft.Text(f"Date: {transaction.date}"),
-                        ft.Divider(),
+                        ft.Text(f"Transaction: {transaction.label[:50]}", color=COLORS.TEXT_PRIMARY, size=12),
+                        mono_text(f"Amount: ${abs(transaction.amount):.2f}", color=COLORS.SECONDARY),
+                        mono_text(f"Date: {transaction.date}", color=COLORS.TEXT_DIM, size=12),
+                        neon_divider(COLORS.BORDER_DIM),
                         bill_dropdown
                     ], tight=True),
                     width=500,
-                    height=250
+                    height=260
                 ),
                 actions=[
                     ft.TextButton("Cancel", on_click=close_bill_dialog),
-                    ft.TextButton("Link Bill", on_click=confirm_bill_link)
+                    ft.TextButton("Link Bill", on_click=confirm_bill_link, style=ft.ButtonStyle(color=COLORS.PRIMARY))
                 ]
             )
-            
-            print("Setting bill dialog...")  # Debug line
-            # Use page.open() method instead
+
+            print("Setting bill dialog...")
             page.open(bill_dialog)
-            print("Bill dialog opened with page.open()!")  # Debug line
-            
+            print("Bill dialog opened with page.open()!")
+
         except Exception as e:
-            print(f"Exception in show_bill_selection_dialog: {e}")  # Debug line
+            print(f"Exception in show_bill_selection_dialog: {e}")
             page.open(ft.SnackBar(content=ft.Text(f"Error opening dialog: {str(e)}")))
 
     def show_create_bill_from_transaction_dialog(transaction_id):
@@ -309,14 +307,11 @@ def transactions_tab(page: ft.Page):
             template_amount = abs(transaction.amount)
             template_payee = transaction.payee or normalize_payee_from_label(transaction.label)
 
-            # Find similar past transactions (sorted oldest-first, template excluded)
             similar = find_similar_transactions_for_bill(transaction_id)
 
-            # Infer suggested due day from template + similar transaction dates
             all_dates = [transaction.date] + [t.date for t, _ in similar]
             suggested_due_day = int(round(sum(d.day for d in all_dates) / len(all_dates)))
 
-            # --- Bill detail fields ---
             payee_field = ft.TextField(label="Payee / Bill Name", value=template_payee, width=320)
             amount_field = ft.TextField(
                 label="Expected Amount", value=f"{template_amount:.2f}", width=150
@@ -332,10 +327,8 @@ def transactions_tab(page: ft.Page):
                 width=200,
             )
 
-            # --- Build checkbox rows ---
-            # Template transaction is first (pre-checked), then similar sorted by date
             all_items = [(transaction, 1.0)] + similar
-            checkbox_refs = []  # list of (Transaction, ft.Checkbox)
+            checkbox_refs = []
 
             checkbox_rows = []
             for t, score in all_items:
@@ -343,20 +336,20 @@ def transactions_tab(page: ft.Page):
                 cb = ft.Checkbox(value=True)
                 checkbox_refs.append((t, cb))
                 label_text = "(this payment)" if is_template else f"{score:.0%} match"
-                label_color = "blue" if is_template else "grey600"
+                label_color = COLORS.PRIMARY if is_template else COLORS.TEXT_DIM
                 checkbox_rows.append(
                     ft.Container(
                         content=ft.Row(
                             [
                                 cb,
-                                ft.Text(t.date.strftime("%Y-%m-%d"), width=95, size=12),
-                                ft.Text(t.label[:42], width=290, size=12),
-                                ft.Text(f"${abs(t.amount):.2f}", width=75, size=12),
+                                mono_text(t.date.strftime("%Y-%m-%d"), color=COLORS.TEXT_DIM, size=12),
+                                ft.Text(t.label[:42], width=290, size=12, color=COLORS.TEXT_PRIMARY),
+                                mono_text(f"${abs(t.amount):.2f}", color=COLORS.TEXT_PRIMARY, size=12),
                                 ft.Text(label_text, size=11, color=label_color),
                             ],
                             spacing=4,
                         ),
-                        border=ft.border.only(left=ft.BorderSide(3, "blue")) if is_template else None,
+                        border=ft.border.only(left=ft.BorderSide(3, COLORS.PRIMARY)) if is_template else None,
                         padding=ft.padding.symmetric(vertical=2, horizontal=4),
                     )
                 )
@@ -367,6 +360,7 @@ def transactions_tab(page: ft.Page):
                         f"Payments to include ({len(checkbox_rows)} found — uncheck to exclude):",
                         size=12,
                         weight=ft.FontWeight.BOLD,
+                        color=COLORS.TEXT_PRIMARY,
                     ),
                     ft.Container(
                         content=ft.Column(
@@ -375,9 +369,10 @@ def transactions_tab(page: ft.Page):
                             spacing=0,
                         ),
                         height=220,
-                        border=ft.border.all(1, "grey300"),
+                        border=ft.border.all(1, COLORS.BORDER_DIM),
                         border_radius=4,
                         padding=4,
+                        bgcolor=COLORS.SURFACE,
                     ),
                 ],
                 spacing=6,
@@ -432,7 +427,8 @@ def transactions_tab(page: ft.Page):
                     page.open(ft.SnackBar(content=ft.Text(f"Error creating bill: {str(ex)}")))
 
             create_bill_dialog = ft.AlertDialog(
-                title=ft.Text("Create Recurring Bill from Payment"),
+                title=ft.Text("Create Recurring Bill from Payment", color=COLORS.PRIMARY),
+                bgcolor=COLORS.SURFACE_VARIANT,
                 content=ft.Container(
                     content=ft.Column(
                         [
@@ -440,24 +436,27 @@ def transactions_tab(page: ft.Page):
                             ft.Container(
                                 content=ft.Column(
                                     [
-                                        ft.Text("Template Payment", size=12, weight=ft.FontWeight.BOLD, color="blue"),
-                                        ft.Text(f"Label: {transaction.label[:65]}", size=11),
-                                        ft.Text(
+                                        ft.Text("Template Payment", size=12, weight=ft.FontWeight.BOLD, color=COLORS.PRIMARY),
+                                        ft.Text(f"Label: {transaction.label[:65]}", size=11, color=COLORS.TEXT_PRIMARY),
+                                        mono_text(
                                             f"Amount: ${template_amount:.2f}   "
                                             f"Date: {transaction.date.strftime('%Y-%m-%d')}",
+                                            color=COLORS.TEXT_DIM,
                                             size=11,
                                         ),
                                     ],
                                     spacing=2,
                                 ),
-                                border=ft.border.only(left=ft.BorderSide(3, "blue")),
+                                border=ft.border.only(left=ft.BorderSide(3, COLORS.PRIMARY)),
                                 padding=ft.padding.only(left=10, top=6, bottom=6),
+                                bgcolor=COLORS.SURFACE,
+                                border_radius=ft.border_radius.only(top_right=4, bottom_right=4),
                             ),
-                            ft.Divider(height=6),
-                            ft.Text("Bill Details", size=12, weight=ft.FontWeight.BOLD),
+                            neon_divider(COLORS.BORDER_DIM),
+                            ft.Text("Bill Details", size=12, weight=ft.FontWeight.BOLD, color=COLORS.TEXT_PRIMARY),
                             payee_field,
                             ft.Row([amount_field, due_day_field, category_dropdown], spacing=8),
-                            ft.Divider(height=6),
+                            neon_divider(COLORS.BORDER_DIM),
                             similar_section,
                         ],
                         spacing=6,
@@ -468,7 +467,11 @@ def transactions_tab(page: ft.Page):
                 ),
                 actions=[
                     ft.TextButton("Cancel", on_click=lambda e: page.close(create_bill_dialog)),
-                    ft.ElevatedButton("Create Bill", on_click=create_bill_action),
+                    ft.TextButton(
+                        "Create Bill",
+                        on_click=create_bill_action,
+                        style=ft.ButtonStyle(color=COLORS.PRIMARY),
+                    ),
                 ],
             )
 
@@ -477,47 +480,44 @@ def transactions_tab(page: ft.Page):
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error opening dialog: {str(e)}")))
 
-    # Create import section
+    # Import section
     import_section = csv_import_page(page)
-    
-    refresh_button = ft.ElevatedButton(
-        "Refresh",
-        icon=ft.Icons.REFRESH,
-        on_click=lambda _: refresh_transactions()
-    )
+
+    refresh_button = cyber_button("Refresh", icon=ft.Icons.REFRESH, on_click=lambda _: refresh_transactions(), color=COLORS.TEXT_DIM)
 
     data_table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("Date")),
-            ft.DataColumn(ft.Text("Label")),
-            ft.DataColumn(ft.Text("Payee")),
-            ft.DataColumn(ft.Text("Category")),
-            ft.DataColumn(ft.Text("Debit")),
-            ft.DataColumn(ft.Text("Credit")),
-            ft.DataColumn(ft.Text("Amount")),
-            ft.DataColumn(ft.Text("Balance")),
-            ft.DataColumn(ft.Text("Bill Actions")),
+            ft.DataColumn(col_label("DATE")),
+            ft.DataColumn(col_label("LABEL")),
+            ft.DataColumn(col_label("PAYEE")),
+            ft.DataColumn(col_label("CATEGORY")),
+            ft.DataColumn(col_label("DEBIT")),
+            ft.DataColumn(col_label("CREDIT")),
+            ft.DataColumn(col_label("AMOUNT")),
+            ft.DataColumn(col_label("BALANCE")),
+            ft.DataColumn(col_label("BILL ACTIONS")),
         ],
-        width=1400  # Increased width for new column
+        width=1400,
+        heading_row_color=COLORS.SURFACE_VARIANT,
+        data_row_color={ft.ControlState.HOVERED: f"{COLORS.PRIMARY}11"},
     )
-    
+
     # Initial load
     refresh_transactions()
-    
+
     return ft.Column([
-        ft.Text("Transactions", size=20, weight=ft.FontWeight.BOLD),
-        ft.Divider(),
-        ft.Text("Import CSV", size=16, weight=ft.FontWeight.BOLD),
-        import_section,
-        ft.Divider(),
+        section_header("Transactions"),
+        neon_divider(),
+        section_header("Import CSV", color=COLORS.WARNING),
+        neon_card(import_section, accent=COLORS.BORDER_DIM),
+        neon_divider(COLORS.BORDER_DIM),
         ft.Row([
             refresh_button,
-            ft.Text(f"Showing latest {len(data_table.rows)} transactions")
-        ]),
-        ft.ListView(
-            controls=[data_table],
-            height=400,
-            width=1400,
-            auto_scroll=True
-        )
-    ], scroll=ft.ScrollMode.AUTO)
+            ft.Text(f"Showing latest {len(data_table.rows)} transactions", size=12, color=COLORS.TEXT_DIM, font_family="ShareTechMono")
+        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        neon_card(
+            ft.ListView(controls=[data_table], height=400, width=1400, auto_scroll=True),
+            accent=COLORS.PRIMARY,
+            padding=0,
+        ),
+    ], scroll=ft.ScrollMode.AUTO, spacing=12)

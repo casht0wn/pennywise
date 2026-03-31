@@ -3,6 +3,7 @@ import csv
 from datetime import datetime
 from services.db import session, Transaction, Category
 from services.label import suggest_payee, refresh_label_index
+from theme import COLORS, cyber_button, mono_text
 
 def add_transaction(transaction: Transaction):
     try:
@@ -15,7 +16,7 @@ def add_transaction(transaction: Transaction):
         return False
 
 def csv_import_page(page: ft.Page):
-    status_text = ft.Text("No file selected")
+    status_text = ft.Text("No file selected", size=12, color=COLORS.TEXT_DIM, font_family="ShareTechMono")
     
     def on_import(e: ft.FilePickerResultEvent):
         if not e.files:
@@ -118,7 +119,9 @@ def csv_import_page(page: ft.Page):
             except Exception as refresh_error:
                 print(f"Warning: could not refresh label index after import: {refresh_error}")
 
+        has_errors = error_count > 0
         status_text.value = f"Import complete! Imported: {imported_count}, Duplicates: {duplicate_count}, Errors: {error_count}"
+        status_text.color = COLORS.SECONDARY if has_errors else COLORS.SUCCESS
        
         # Show snackbar
         page.open(
@@ -132,13 +135,14 @@ def csv_import_page(page: ft.Page):
     file_picker = ft.FilePicker(on_result=on_import)
     page.overlay.append(file_picker)
     
-    import_button = ft.ElevatedButton(
+    import_button = cyber_button(
         "Select CSV File",
         icon=ft.Icons.UPLOAD_FILE,
         on_click=lambda _: file_picker.pick_files(
             allow_multiple=True,
             allowed_extensions=["csv"]
-        )
+        ),
+        color=COLORS.PRIMARY,
     )
     
     return ft.Column([

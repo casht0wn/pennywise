@@ -1,8 +1,13 @@
 import flet as ft
 from services.db import session, Category
+from theme import (
+    COLORS, neon_card, neon_divider, section_header, mono_text, cyber_button
+)
 
 
 def categories_tab(page: ft.Page):
+    col_label = lambda t: ft.Text(t, size=11, color=COLORS.TEXT_DIM)
+
     def refresh_categories():
         try:
             categories = session.query(Category).all()
@@ -13,12 +18,12 @@ def categories_tab(page: ft.Page):
 
                 data_table.rows.append(
                     ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(str(i), color="grey")),
-                        ft.DataCell(ft.Text(c.name)),
+                        ft.DataCell(mono_text(str(i), color=COLORS.TEXT_DIM, size=12)),
+                        ft.DataCell(ft.Text(c.name, color=COLORS.TEXT_PRIMARY, size=13)),
                         ft.DataCell(ft.IconButton(
                             icon=ft.Icons.EDIT,
                             tooltip="Edit category name",
-                            icon_color="blue",
+                            icon_color=COLORS.PRIMARY,
                             on_click=create_edit_handler(c.id),
                         )),
                     ])
@@ -46,11 +51,12 @@ def categories_tab(page: ft.Page):
                 page.open(ft.SnackBar(content=ft.Text(f"Error: {ex}")))
 
         dialog = ft.AlertDialog(
-            title=ft.Text("Add Category"),
+            title=ft.Text("Add Category", color=COLORS.PRIMARY),
+            bgcolor=COLORS.SURFACE_VARIANT,
             content=ft.Container(content=name_field, padding=ft.padding.only(top=8)),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda e: page.close(dialog)),
-                ft.ElevatedButton("Add", on_click=save),
+                ft.TextButton("Add", on_click=save, style=ft.ButtonStyle(color=COLORS.PRIMARY)),
             ],
         )
         page.open(dialog)
@@ -80,36 +86,44 @@ def categories_tab(page: ft.Page):
                 page.open(ft.SnackBar(content=ft.Text(f"Error: {ex}")))
 
         dialog = ft.AlertDialog(
-            title=ft.Text("Edit Category"),
+            title=ft.Text("Edit Category", color=COLORS.PRIMARY),
+            bgcolor=COLORS.SURFACE_VARIANT,
             content=ft.Container(content=name_field, padding=ft.padding.only(top=8)),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda e: page.close(dialog)),
-                ft.ElevatedButton("Save", on_click=save),
+                ft.TextButton("Save", on_click=save, style=ft.ButtonStyle(color=COLORS.PRIMARY)),
             ],
         )
         page.open(dialog)
 
     data_table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("#")),
-            ft.DataColumn(ft.Text("Name")),
-            ft.DataColumn(ft.Text("Actions")),
+            ft.DataColumn(col_label("#")),
+            ft.DataColumn(col_label("NAME")),
+            ft.DataColumn(col_label("ACTIONS")),
         ],
         rows=[],
         column_spacing=40,
+        heading_row_color=COLORS.SURFACE_VARIANT,
+        data_row_color={ft.ControlState.HOVERED: f"{COLORS.PRIMARY}11"},
     )
 
     refresh_categories()
 
     return ft.Column(
         [
-            ft.Text("Categories", size=20, weight=ft.FontWeight.BOLD),
-            ft.Divider(),
+            section_header("Categories"),
+            neon_divider(),
             ft.Row([
-                ft.ElevatedButton("Refresh", icon=ft.Icons.REFRESH, on_click=lambda _: refresh_categories()),
-                ft.ElevatedButton("Add Category", icon=ft.Icons.ADD, on_click=lambda _: show_add_dialog()),
-            ]),
-            ft.ListView(controls=[data_table], height=400, auto_scroll=True),
+                cyber_button("Refresh", icon=ft.Icons.REFRESH, on_click=lambda _: refresh_categories(), color=COLORS.TEXT_DIM),
+                cyber_button("Add Category", icon=ft.Icons.ADD, on_click=lambda _: show_add_dialog()),
+            ], spacing=8),
+            neon_card(
+                ft.ListView(controls=[data_table], height=400, auto_scroll=True),
+                accent=COLORS.PRIMARY,
+                padding=0,
+            ),
         ],
         scroll=ft.ScrollMode.AUTO,
+        spacing=12,
     )

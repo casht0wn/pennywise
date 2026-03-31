@@ -9,15 +9,19 @@ import flet as ft
 from datetime import date, timedelta
 from services.db import session, Bill, BillInstance
 from services.notifications import notification_service
+from theme import (
+    COLORS, neon_card, neon_divider, section_header, mono_text, cyber_button
+)
+
 
 def dashboard_tab(page: ft.Page):
     """Main dashboard tab showing bill summary and stats"""
-    
+
     def refresh_dashboard():
         """Refresh all dashboard data"""
         try:
             summary = notification_service.get_dashboard_summary()
-            
+
             # Update summary cards (count at index 1, amount at index 2)
             upcoming_card.content.content.controls[1].value = str(summary['upcoming_count'])
             upcoming_card.content.content.controls[2].value = f"${summary['upcoming_total']:.2f}"
@@ -26,38 +30,55 @@ def dashboard_tab(page: ft.Page):
             overdue_card.content.content.controls[2].value = f"${summary['overdue_total']:.2f}"
 
             today_card.content.content.controls[1].value = str(summary['today_count'])
-            
+
             # Update today's bills list
             today_bills_list.controls.clear()
             for bill_instance in summary['today_bills']:
                 bill = bill_instance.bill
                 today_bills_list.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(bill.payee),
-                        subtitle=ft.Text(f"${bill.expected_amount:.2f}"),
-                        trailing=ft.IconButton(
-                            icon=ft.Icons.CHECK_CIRCLE,
-                            icon_color="green",
-                            tooltip="Mark as Paid",
-                            on_click=lambda e, instance_id=bill_instance.id: mark_paid(instance_id)
-                        )
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Column(
+                                    [
+                                        ft.Text(bill.payee, size=13, color=COLORS.TEXT_PRIMARY, weight=ft.FontWeight.W_500),
+                                        mono_text(f"${bill.expected_amount:.2f}", color=COLORS.WARNING, size=12),
+                                    ],
+                                    spacing=2,
+                                    tight=True,
+                                    expand=True,
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.CHECK_CIRCLE,
+                                    icon_color=COLORS.SUCCESS,
+                                    tooltip="Mark as Paid",
+                                    on_click=lambda e, instance_id=bill_instance.id: mark_paid(instance_id)
+                                ),
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        bgcolor=COLORS.SURFACE,
+                        border=ft.border.all(1, COLORS.BORDER_DIM),
+                        border_radius=4,
+                        padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                        margin=ft.margin.only(bottom=6),
                     )
                 )
-            
+
             if not summary['today_bills']:
                 today_bills_list.controls.append(
-                    ft.Text("No bills due today", style=ft.TextThemeStyle.BODY_MEDIUM)
+                    ft.Text("No bills due today", size=12, color=COLORS.TEXT_DIM, font_family="ShareTechMono")
                 )
-            
+
             # Refresh overdue and upcoming tables
             refresh_overdue_table()
             refresh_upcoming_table()
-            
+
             page.update()
-            
+
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error refreshing dashboard: {e}")))
-    
+
     def refresh_overdue_table():
         """Refresh the overdue bills table"""
         try:
@@ -71,23 +92,23 @@ def dashboard_tab(page: ft.Page):
 
             if overdue_bills:
                 overdue_status.value = f"{len(overdue_bills)} overdue bill(s)"
-                overdue_status.color = "red"
+                overdue_status.color = COLORS.SECONDARY
             else:
                 overdue_status.value = "No overdue bills"
-                overdue_status.color = "green"
+                overdue_status.color = COLORS.SUCCESS
 
             for bill_instance in overdue_bills:
                 bill = bill_instance.bill
                 days_overdue = (date.today() - bill_instance.due_date).days
                 overdue_table.rows.append(
                     ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(bill.payee)),
-                        ft.DataCell(ft.Text(f"${bill.expected_amount:.2f}")),
-                        ft.DataCell(ft.Text(bill_instance.due_date.strftime("%Y-%m-%d"), color="red")),
-                        ft.DataCell(ft.Text(f"{days_overdue} day(s)", color="red")),
+                        ft.DataCell(ft.Text(bill.payee, color=COLORS.TEXT_PRIMARY, size=13)),
+                        ft.DataCell(mono_text(f"${bill.expected_amount:.2f}", color=COLORS.TEXT_PRIMARY)),
+                        ft.DataCell(mono_text(bill_instance.due_date.strftime("%Y-%m-%d"), color=COLORS.SECONDARY)),
+                        ft.DataCell(mono_text(f"{days_overdue}d overdue", color=COLORS.SECONDARY)),
                         ft.DataCell(ft.IconButton(
                             icon=ft.Icons.CHECK_CIRCLE,
-                            icon_color="green",
+                            icon_color=COLORS.SUCCESS,
                             tooltip="Mark as Paid",
                             on_click=lambda e, instance_id=bill_instance.id: mark_paid(instance_id)
                         )),
@@ -102,7 +123,6 @@ def dashboard_tab(page: ft.Page):
     def refresh_upcoming_table():
         """Refresh the upcoming bills table"""
         try:
-            # Get bills due in next 30 days
             end_date = date.today() + timedelta(days=30)
             upcoming_bills = session.query(BillInstance).join(Bill).filter(
                 BillInstance.due_date <= end_date,
@@ -117,26 +137,25 @@ def dashboard_tab(page: ft.Page):
                 bill = bill_instance.bill
                 days_until = (bill_instance.due_date - date.today()).days
 
-                # Color code by urgency
                 if days_until == 0:
-                    urgency_color = "red"
+                    urgency_color = COLORS.SECONDARY
                     urgency_text = "TODAY"
                 elif days_until <= 3:
-                    urgency_color = "orange"
-                    urgency_text = f"{days_until} days"
+                    urgency_color = COLORS.WARNING
+                    urgency_text = f"{days_until}d"
                 else:
-                    urgency_color = "green"
-                    urgency_text = f"{days_until} days"
+                    urgency_color = COLORS.SUCCESS
+                    urgency_text = f"{days_until}d"
 
                 upcoming_table.rows.append(
                     ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(bill.payee)),
-                        ft.DataCell(ft.Text(f"${bill.expected_amount:.2f}")),
-                        ft.DataCell(ft.Text(bill_instance.due_date.strftime("%Y-%m-%d"))),
-                        ft.DataCell(ft.Text(urgency_text, color=urgency_color)),
+                        ft.DataCell(ft.Text(bill.payee, color=COLORS.TEXT_PRIMARY, size=13)),
+                        ft.DataCell(mono_text(f"${bill.expected_amount:.2f}", color=COLORS.TEXT_PRIMARY)),
+                        ft.DataCell(mono_text(bill_instance.due_date.strftime("%Y-%m-%d"), color=COLORS.TEXT_DIM)),
+                        ft.DataCell(mono_text(urgency_text, color=urgency_color)),
                         ft.DataCell(ft.IconButton(
                             icon=ft.Icons.CHECK_CIRCLE,
-                            icon_color="green",
+                            icon_color=COLORS.SUCCESS,
                             tooltip="Mark as Paid",
                             on_click=lambda e, instance_id=bill_instance.id: mark_paid(instance_id)
                         ))
@@ -147,7 +166,7 @@ def dashboard_tab(page: ft.Page):
 
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error loading upcoming bills: {e}")))
-    
+
     def mark_paid(bill_instance_id):
         """Mark a bill instance as paid"""
         try:
@@ -159,99 +178,95 @@ def dashboard_tab(page: ft.Page):
                 page.open(ft.SnackBar(content=ft.Text("Error marking bill as paid")))
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error: {e}")))
-    
+
     def check_notifications():
         """Manually check for notifications"""
         try:
             notification_service.check_and_notify(page)
         except Exception as e:
             page.open(ft.SnackBar(content=ft.Text(f"Error checking notifications: {e}")))
-    
-    # Create summary cards
-    # Note: count is at controls[1], amount at controls[2] — refresh_dashboard() depends on these indices.
-    upcoming_card = ft.Card(
-        elevation=2,
-        content=ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(ft.Icons.UPCOMING, color="blue", size=28),
-                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="blue"),
-                    ft.Text("$0.00", size=14, color="blue700"),
-                    ft.Text("Upcoming Bills", size=13, weight=ft.FontWeight.W_500),
-                    ft.Text("Next 30 days", size=11, color="grey"),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-            ),
-            padding=ft.padding.symmetric(vertical=20, horizontal=24),
-            width=190,
+
+    # -----------------------------------------------------------------------
+    # Summary cards
+    # Note: count at controls[1], amount at controls[2] — refresh_dashboard()
+    # depends on these indices.
+    # -----------------------------------------------------------------------
+
+    upcoming_card = neon_card(
+        ft.Column(
+            [
+                ft.Icon(ft.Icons.UPCOMING, color=COLORS.PRIMARY, size=28),
+                mono_text("0", color=COLORS.PRIMARY, size=34),
+                mono_text("$0.00", color=COLORS.PRIMARY, size=14),
+                ft.Text("Upcoming Bills", size=12, weight=ft.FontWeight.W_500, color=COLORS.TEXT_PRIMARY),
+                ft.Text("Next 30 days", size=11, color=COLORS.TEXT_DIM),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=4,
         ),
+        accent=COLORS.PRIMARY,
+        width=190,
+        padding=ft.padding.symmetric(vertical=20, horizontal=24),
     )
 
-    overdue_card = ft.Card(
-        elevation=2,
-        content=ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(ft.Icons.WARNING_ROUNDED, color="red", size=28),
-                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="red"),
-                    ft.Text("$0.00", size=14, color="red700"),
-                    ft.Text("Overdue Bills", size=13, weight=ft.FontWeight.W_500),
-                    ft.Text("Past due", size=11, color="grey"),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-            ),
-            padding=ft.padding.symmetric(vertical=20, horizontal=24),
-            width=190,
+    overdue_card = neon_card(
+        ft.Column(
+            [
+                ft.Icon(ft.Icons.WARNING_ROUNDED, color=COLORS.SECONDARY, size=28),
+                mono_text("0", color=COLORS.SECONDARY, size=34),
+                mono_text("$0.00", color=COLORS.SECONDARY, size=14),
+                ft.Text("Overdue Bills", size=12, weight=ft.FontWeight.W_500, color=COLORS.TEXT_PRIMARY),
+                ft.Text("Past due", size=11, color=COLORS.TEXT_DIM),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=4,
         ),
+        accent=COLORS.SECONDARY,
+        width=190,
+        padding=ft.padding.symmetric(vertical=20, horizontal=24),
     )
 
-    today_card = ft.Card(
-        elevation=2,
-        content=ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(ft.Icons.TODAY, color="orange", size=28),
-                    ft.Text("0", size=34, weight=ft.FontWeight.BOLD, color="orange"),
-                    ft.Text("Due Today", size=13, weight=ft.FontWeight.W_500),
-                    ft.Text("Action needed", size=11, color="grey"),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=3,
-            ),
-            padding=ft.padding.symmetric(vertical=20, horizontal=24),
-            width=190,
+    today_card = neon_card(
+        ft.Column(
+            [
+                ft.Icon(ft.Icons.TODAY, color=COLORS.WARNING, size=28),
+                mono_text("0", color=COLORS.WARNING, size=34),
+                ft.Text("Due Today", size=12, weight=ft.FontWeight.W_500, color=COLORS.TEXT_PRIMARY),
+                ft.Text("Action needed", size=11, color=COLORS.TEXT_DIM),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=4,
         ),
+        accent=COLORS.WARNING,
+        width=190,
+        padding=ft.padding.symmetric(vertical=20, horizontal=24),
     )
-    
+
     # Action buttons
-    refresh_button = ft.ElevatedButton(
-        "Refresh",
-        icon=ft.Icons.REFRESH,
-        on_click=lambda _: refresh_dashboard()
-    )
-    
-    notifications_button = ft.ElevatedButton(
+    refresh_button = cyber_button("Refresh", icon=ft.Icons.REFRESH, on_click=lambda _: refresh_dashboard())
+    notifications_button = cyber_button(
         "Check Notifications",
         icon=ft.Icons.NOTIFICATIONS,
-        on_click=lambda _: check_notifications()
+        on_click=lambda _: check_notifications(),
+        color=COLORS.TEXT_DIM,
     )
-    
+
     # Overdue bills table
-    overdue_status = ft.Text("", size=12)
+    overdue_status = ft.Text("", size=12, font_family="ShareTechMono")
     overdue_table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("Payee")),
-            ft.DataColumn(ft.Text("Amount")),
-            ft.DataColumn(ft.Text("Due Date")),
-            ft.DataColumn(ft.Text("Days Overdue")),
-            ft.DataColumn(ft.Text("Action")),
+            ft.DataColumn(ft.Text("PAYEE", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("AMOUNT", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("DUE DATE", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("OVERDUE", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("ACTION", size=11, color=COLORS.TEXT_DIM)),
         ],
         width=800,
+        heading_row_color=COLORS.SURFACE_VARIANT,
+        data_row_color={ft.ControlState.HOVERED: f"{COLORS.PRIMARY}11"},
     )
 
     # Today's bills section
@@ -260,21 +275,23 @@ def dashboard_tab(page: ft.Page):
     # Upcoming bills table
     upcoming_table = ft.DataTable(
         columns=[
-            ft.DataColumn(ft.Text("Payee")),
-            ft.DataColumn(ft.Text("Amount")),
-            ft.DataColumn(ft.Text("Due Date")),
-            ft.DataColumn(ft.Text("Days Until")),
-            ft.DataColumn(ft.Text("Action")),
+            ft.DataColumn(ft.Text("PAYEE", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("AMOUNT", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("DUE DATE", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("DAYS", size=11, color=COLORS.TEXT_DIM)),
+            ft.DataColumn(ft.Text("ACTION", size=11, color=COLORS.TEXT_DIM)),
         ],
-        width=800
+        width=800,
+        heading_row_color=COLORS.SURFACE_VARIANT,
+        data_row_color={ft.ControlState.HOVERED: f"{COLORS.PRIMARY}11"},
     )
-    
+
     # Initial load
     refresh_dashboard()
-    
+
     return ft.Column([
-        ft.Text("Dashboard", size=20, weight=ft.FontWeight.BOLD),
-        ft.Divider(),
+        section_header("Dashboard"),
+        neon_divider(),
 
         # Summary cards row
         ft.Row([
@@ -285,34 +302,42 @@ def dashboard_tab(page: ft.Page):
 
         ft.Row([refresh_button, notifications_button], spacing=8),
 
-        ft.Divider(),
+        neon_divider(COLORS.BORDER_DIM),
 
         # Overdue bills section
         ft.Row([
-            ft.Text("Overdue Bills", size=16, weight=ft.FontWeight.BOLD, color="red"),
+            section_header("Overdue Bills", color=COLORS.SECONDARY),
             overdue_status,
         ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.ListView(controls=[overdue_table], height=220, auto_scroll=True),
+        neon_card(
+            ft.ListView(controls=[overdue_table], height=200, auto_scroll=True),
+            accent=COLORS.SECONDARY,
+            padding=0,
+        ),
 
-        ft.Divider(),
+        neon_divider(COLORS.BORDER_DIM),
 
-        # Two column layout
+        # Two-column layout
         ft.Row([
-            # Left column - Today's bills
+            # Left — Today's bills
             ft.Column([
-                ft.Text("Bills Due Today", size=16, weight=ft.FontWeight.BOLD),
+                section_header("Bills Due Today", color=COLORS.WARNING),
                 ft.Container(
                     content=today_bills_list,
-                    height=200,
-                    width=300,
+                    height=220,
+                    width=320,
                 )
-            ]),
+            ], spacing=10),
 
-            # Right column - Upcoming bills
+            # Right — Upcoming bills
             ft.Column([
-                ft.Text("Upcoming Bills (Next 30 Days)", size=16, weight=ft.FontWeight.BOLD),
-                ft.Container(content=upcoming_table, height=300)
-            ])
-        ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
-        
-    ], scroll=ft.ScrollMode.AUTO)
+                section_header("Upcoming (Next 30 Days)"),
+                neon_card(
+                    ft.Container(content=upcoming_table, height=280),
+                    accent=COLORS.PRIMARY,
+                    padding=0,
+                ),
+            ], spacing=10),
+        ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START, spacing=32),
+
+    ], scroll=ft.ScrollMode.AUTO, spacing=12)

@@ -23,13 +23,13 @@ def dashboard_tab(page: ft.Page):
             summary = notification_service.get_dashboard_summary()
 
             # Update summary cards (count at index 1, amount at index 2)
-            upcoming_card.content.content.controls[1].value = str(summary['upcoming_count'])
-            upcoming_card.content.content.controls[2].value = f"${summary['upcoming_total']:.2f}"
+            upcoming_card.content.controls[1].value = str(summary['upcoming_count'])
+            upcoming_card.content.controls[2].value = f"${summary['upcoming_total']:.2f}"
 
-            overdue_card.content.content.controls[1].value = str(summary['overdue_count'])
-            overdue_card.content.content.controls[2].value = f"${summary['overdue_total']:.2f}"
+            overdue_card.content.controls[1].value = str(summary['overdue_count'])
+            overdue_card.content.controls[2].value = f"${summary['overdue_total']:.2f}"
 
-            today_card.content.content.controls[1].value = str(summary['today_count'])
+            today_card.content.controls[1].value = str(summary['today_count'])
 
             # Update today's bills list
             today_bills_list.controls.clear()
@@ -323,7 +323,7 @@ def dashboard_tab(page: ft.Page):
             ft.Column([
                 section_header("Bills Due Today", color=COLORS.WARNING),
                 ft.Container(
-                    content=today_bills_list,
+                    today_bills_list,
                     height=220,
                     width=320,
                 )
@@ -333,7 +333,7 @@ def dashboard_tab(page: ft.Page):
             ft.Column([
                 section_header("Upcoming (Next 30 Days)"),
                 neon_card(
-                    ft.Container(content=upcoming_table, height=280),
+                    ft.Container(upcoming_table, height=280),
                     accent=COLORS.PRIMARY,
                     padding=0,
                 ),
